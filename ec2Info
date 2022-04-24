@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Note that these scripts rely on having 'StrictHostKeyChecking accept-new' in the ~/.ssh/config file.
+#
+# For jq, a sort of sed for json data, see https://stedolan.github.io/jq/
+
+if [ "$1" = "-dailyJail" ]; then
+    dailyJail="yes"
+fi
+
+if [ "$1" = "-leginfo" ]; then
+    leginfo="yes"
+fi
+
+if [ "$1" = "-voter" ]; then
+    voter="yes"
+fi
+
+if [ "$1" = "-jdi" ]; then
+    jdi="yes"
+fi
+
+if [ "$1" = "" ]; then
+    dailyJail="yes"
+    leginfo="yes"
+    voter="yes"
+    jdi="yes"
+fi
+
+if [ "$1" != "" ] && [ "$1" != "-dailyJail" ] && [ "$1" != "-leginfo" ]; then
+    echo ""
+    echo "usage: ec2Info [ <blank> | -dailyJail | -leginfo | -voter | -jdi ]"
+    echo ""
+    exit
+fi
+
+aws ec2 describe-instances > /tmp/ec2_$$.json
+
+for inst_num in {0..10}
+do
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "dailyJail" ]; then
+        dailyJailIdx=$inst_num
+    fi
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "leginfo" ]; then
+        leginfoIdx=$inst_num
+    fi
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "voter" ]; then
+        voterIdx=$inst_num
+    fi
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "jdi" ]; then
+        jdiIdx=$inst_num
+    fi
+done
+
+djState=`jq --raw-output '.Reservations['$dailyJailIdx'].Instances[0].State.Name' /tmp/ec2_$$.json`
+djId=`jq --raw-output '.Reservations['$dailyJailIdx'].Instances[0].InstanceId' /tmp/ec2_$$.json`
+djIp=`jq --raw-output '.Reservations['$dailyJailIdx'].Instances[0].PublicIpAddress' /tmp/ec2_$$.json`
+
+legState=`jq --raw-output '.Reservations['$leginfoIdx'].Instances[0].State.Name' /tmp/ec2_$$.json`
+legId=`jq --raw-output '.Reservations['$leginfoIdx'].Instances[0].InstanceId' /tmp/ec2_$$.json`
+legIp=`jq --raw-output '.Reservations['$leginfoIdx'].Instances[0].PublicIpAddress' /tmp/ec2_$$.json`
+
+votState=`jq --raw-output '.Reservations['$voterIdx'].Instances[0].State.Name' /tmp/ec2_$$.json`
+votId=`jq --raw-output '.Reservations['$voterIdx'].Instances[0].InstanceId' /tmp/ec2_$$.json`
+votIp=`jq --raw-output '.Reservations['$voterIdx'].Instances[0].PublicIpAddress' /tmp/ec2_$$.json`
+
+jdiState=`jq --raw-output '.Reservations['$jdiIdx'].Instances[0].State.Name' /tmp/ec2_$$.json`
+jdiId=`jq --raw-output '.Reservations['$jdiIdx'].Instances[0].InstanceId' /tmp/ec2_$$.json`
+jdiIp=`jq --raw-output '.Reservations['$jdiIdx'].Instances[0].PublicIpAddress' /tmp/ec2_$$.json`
+
+if [ $djState = "running" ]; then
+    echo "dailyJail: id: $djId state: $djState login: ubuntu@$djIp"
+else
+    echo "dailyJail: id: $djId state: $djState"
+fi
+
+if [ $legState = "running" ]; then
+    echo "  leginfo: id: $legId state: $legState login: ubuntu@$legIp"
+else
+    echo "  leginfo: id: $legId state: $legState"
+fi
+
+if [ $votState = "running" ]; then
+    echo "    voter: id: $votId state: $votState login: ubuntu@$votIp"
+else
+    echo "    voter: id: $votId state: $votState"
+fi
+
+if [ $jdiState = "running" ]; then
+    echo "      jdi: id: $jdiId state: $jdiState login: ubuntu@$jdiIp"
+else
+    echo "      jdi: id: $jdiId state: $jdiState"
+fi
+

@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# Note that these scripts rely on having 'StrictHostKeyChecking accept-new' in the ~/.ssh/config file.
+#
+# For jq, a sort of sed for json data, see https://stedolan.github.io/jq/
+
+if [ "$1" != "-dailyJail" ] && [ "$1" != "-leginfo" ] && [ "$1" != "-voter" ] && [ "$1" != "-jdi" ]; then
+    echo ""
+    echo "Please give me either \"-dailyJail\", \"-leginfo\", \"-voter\", or \"-jdi\" as a parameter."
+    echo ""
+    exit
+fi
+
+aws ec2 describe-instances > /tmp/ec2_$$.json
+
+for inst_num in {0..10}
+do
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "dailyJail" ]; then
+        dailyJailIdx=$inst_num
+    fi
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "leginfo" ]; then
+        leginfoIdx=$inst_num
+    fi
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "voter" ]; then
+        voterIdx=$inst_num
+    fi
+    if [ `jq --raw-output '.Reservations['$inst_num'].Instances[0].Tags[0].Value' /tmp/ec2_$$.json` = "jdi" ]; then
+        jdiIdx=$inst_num
+    fi
+done
+
+if [ "$1" = "-dailyJail" ]; then
+    idx=$dailyJailIdx
+fi
+if [ "$1" = "-leginfo" ]; then
+    idx=$leginfoIdx
+fi
+if [ "$1" = "-voter" ]; then
+    idx=$voterIdx
+fi
+if [ "$1" = "-jdi" ]; then
+    idx=$jdiIdx
+fi
+
+id=`jq --raw-output '.Reservations['$idx'].Instances[0].InstanceId' /tmp/ec2_$$.json`
+state=`jq --raw-output '.Reservations['$idx'].Instances[0].State.Name' /tmp/ec2_$$.json`
+
+echo ""
+
+echo "starting..."
+
+echo ""
+
+echo "id: $id"
+
+echo ""
+
+if [ $state != "stopped" ]; then
+
+    echo "instance in unexpected state: $state"
+    echo ""
+    exit 0
+fi
+
+aws ec2 start-instances --instance-ids $id
+
+echo ""
+
+while :
+do
+
+    launchStatus=`aws ec2 describe-instances --instance-ids $id | jq --raw-output '.Reservations[0].Instances[0].State.Name'`
+
+    echo "launchStatus: $launchStatus"
+    echo ""
+
+    if [ $launchStatus = "running" ]; then
+        break;
+    fi
+
+    sleep 5
+done
+
+echo "fetching ip address..."
+
+echo ""
+
+while :
+do
+
+    ipAddress=`aws ec2 describe-instances --instance-ids $id | jq --raw-output '.Reservations[0].Instances[0].PublicIpAddress'`
+
+    if [ $ipAddress != "" ]; then
+
+        echo "ip address: $ipAddress"
+        echo ""
+        break;
+    else
+
+        echo "waiting for ip address..."
+        echo ""
+
+        sleep 5
+    fi
+done
+
+echo "ssh -i ~/.ssh/ganymede_20210301.pem ubuntu@$ipAddress"
+echo ""
+
+exit 0
